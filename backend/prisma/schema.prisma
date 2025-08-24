@@ -1,0 +1,199 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String   @id @default(uuid())
+  username        String   @unique
+  email           String   @unique
+  passwordHash    String   @map("password_hash")
+  fullName        String?  @map("full_name")
+  bio             String?
+  profileImageUrl String?  @map("profile_image_url")
+  interests       String[]
+  websiteUrl      String?  @map("website_url")
+  twitterHandle   String?  @map("twitter_handle")
+  instagramHandle String?  @map("instagram_handle")
+  isVerified      Boolean  @default(false) @map("is_verified")
+  isActive        Boolean  @default(true) @map("is_active")
+  emailVerified   Boolean  @default(false) @map("email_verified")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  reviews        Review[]
+  followers      Follow[] @relation("UserFollowers")
+  following      Follow[] @relation("UserFollowing")
+  reviewLikes    ReviewLike[]
+  reviewComments ReviewComment[]
+  readingLists   ReadingList[]
+  notifications  Notification[]
+  sessions       Session[]
+
+  @@map("users")
+}
+
+model Book {
+  id              String  @id @default(uuid())
+  openLibraryId   String? @unique @map("open_library_id")
+  title           String
+  author          String
+  isbn            String?
+  publicationYear Int?    @map("publication_year")
+  coverImageUrl   String? @map("cover_image_url")
+  description     String?
+  genre           String?
+  pageCount       Int?    @map("page_count")
+  avgRating       Float   @default(0) @map("avg_rating")
+  totalReviews    Int     @default(0) @map("total_reviews")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  reviews         Review[]
+  readingListBooks ReadingListBook[]
+
+  @@map("books")
+}
+
+model Review {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  bookId        String   @map("book_id")
+  rating        Int?
+  title         String?
+  content       String?
+  isSpoiler     Boolean  @default(false) @map("is_spoiler")
+  likesCount    Int      @default(0) @map("likes_count")
+  commentsCount Int      @default(0) @map("comments_count")
+  isPublished   Boolean  @default(true) @map("is_published")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book     Book           @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  likes    ReviewLike[]
+  comments ReviewComment[]
+
+  @@unique([userId, bookId])
+  @@map("reviews")
+}
+
+model Follow {
+  id          String   @id @default(uuid())
+  followerId  String   @map("follower_id")
+  followingId String   @map("following_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  // Relations
+  follower  User @relation("UserFollowers", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("UserFollowing", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@map("follows")
+}
+
+model ReviewLike {
+  id       String   @id @default(uuid())
+  userId   String   @map("user_id")
+  reviewId String   @map("review_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  review Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, reviewId])
+  @@map("review_likes")
+}
+
+model ReviewComment {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  reviewId  String   @map("review_id")
+  content   String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  review Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  @@map("review_comments")
+}
+
+model ReadingList {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  name        String
+  description String?
+  isPublic    Boolean  @default(true) @map("is_public")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user  User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  books ReadingListBook[]
+
+  @@map("reading_lists")
+}
+
+model ReadingListBook {
+  id            String    @id @default(uuid())
+  readingListId String    @map("reading_list_id")
+  bookId        String    @map("book_id")
+  status        ReadingStatus @default(TO_READ)
+  dateAdded     DateTime  @default(now()) @map("date_added")
+  dateStarted   DateTime? @map("date_started")
+  dateFinished  DateTime? @map("date_finished")
+
+  // Relations
+  readingList ReadingList @relation(fields: [readingListId], references: [id], onDelete: Cascade)
+  book        Book        @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@unique([readingListId, bookId])
+  @@map("reading_list_books")
+}
+
+model Notification {
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  type            String
+  title           String
+  message         String?
+  relatedUserId   String?  @map("related_user_id")
+  relatedReviewId String?  @map("related_review_id")
+  isRead          Boolean  @default(false) @map("is_read")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model Session {
+  id        String   @id
+  userId    String?  @map("user_id")
+  data      String?
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+enum ReadingStatus {
+  TO_READ  @map("to-read")
+  READING  @map("reading")
+  READ     @map("read")
+}
