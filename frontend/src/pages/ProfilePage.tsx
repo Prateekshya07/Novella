@@ -1,326 +1,415 @@
 import { useParams } from 'react-router-dom'
-import { useState } from 'react'
+import { useState, FormEvent } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '../store/authStore'
-import { BookOpen, Users, Star, Heart, MessageCircle, Share, Settings, UserPlus, Calendar, ExternalLink } from 'lucide-react'
+import {
+  BookOpen,
+  Star,
+  MessageCircle,
+  Settings,
+  UserPlus,
+  MoreHorizontal,
+  X,
+} from 'lucide-react'
 
 export default function ProfilePage() {
   const { username } = useParams<{ username: string }>()
   const { user: currentUser } = useAuthStore()
   const [activeTab, setActiveTab] = useState('activity')
-  
-  // Mock user data - in a real app, you'd fetch this based on the username param
-  const profileUser = {
-    id: username === currentUser?.username ? currentUser.id : 'user-2',
-    username: username || 'unknown',
-    fullName: username === currentUser?.username ? currentUser?.fullName : 'Jane Smith',
-    email: username === currentUser?.username ? currentUser?.email : 'jane@example.com',
-    bio: username === currentUser?.username ? (currentUser?.bio || 'Book lover and aspiring writer. Always looking for the next great read! 📚✨') : 'Passionate reader of literary fiction and fantasy. Coffee enthusiast.',
-    profileImageUrl: username === currentUser?.username ? currentUser?.profileImageUrl : undefined,
-    websiteUrl: username === currentUser?.username ? currentUser?.websiteUrl : 'https://janereads.blog',
-    twitterHandle: username === currentUser?.username ? currentUser?.twitterHandle : 'janereads',
-    instagramHandle: username === currentUser?.username ? currentUser?.instagramHandle : 'jane.reads.books',
-    isVerified: username === currentUser?.username ? (currentUser?.isVerified || false) : true,
-    interests: username === currentUser?.username ? (currentUser?.interests || ['Fiction', 'Fantasy', 'Biography']) : ['Literary Fiction', 'Poetry', 'Philosophy'],
-    createdAt: username === currentUser?.username ? (currentUser?.createdAt || '2023-01-15') : '2022-08-12',
-    stats: {
-      booksRead: username === currentUser?.username ? 42 : 67,
-      reviews: username === currentUser?.username ? 28 : 45,
-      followers: username === currentUser?.username ? 156 : 234,
-      following: username === currentUser?.username ? 89 : 123,
-      averageRating: username === currentUser?.username ? 4.2 : 4.1
-    }
+
+  // ✅ Type definitions
+  interface UserStats {
+    booksRead: number
+    reviews: number
+    followers: number
+    following: number
+    averageRating: number
   }
 
-  const isOwnProfile = username === currentUser?.username
+  interface ProfileUser {
+    id: string
+    username: string
+    fullName: string
+    email: string
+    bio: string
+    location?: string
+    profileImageUrl?: string
+    websiteUrl?: string
+    twitterHandle?: string
+    instagramHandle?: string
+    isVerified: boolean
+    interests: string[]
+    createdAt: string
+    stats: UserStats
+  }
+
+  type Review = { text: string; date: string }
+
+  // ✅ Review state
+  const [reviewText, setReviewText] = useState('')
+  const [reviews, setReviews] = useState<Review[]>([])
+
+  // ✅ Edit & Delete modal state
+  const [showOptions, setShowOptions] = useState<number | null>(null)
+  const [editingIndex, setEditingIndex] = useState<number | null>(null)
+  const [editText, setEditText] = useState('')
+  const [deleteIndex, setDeleteIndex] = useState<number | null>(null)
+
+  if (!currentUser) return <div>Loading...</div>
+
+  const [profileUser, setProfileUser] = useState<ProfileUser>({
+    id: username === currentUser.username ? currentUser.id : 'user-2',
+    username: username || 'unknown',
+    fullName:
+      username === currentUser.username ? currentUser.fullName || '' : 'Jane Smith',
+    email:
+      username === currentUser.username ? currentUser.email || '' : 'jane@example.com',
+    bio:
+      username === currentUser.username
+        ? currentUser.bio || 'Book lover and aspiring writer. Always looking for the next great read! 📚✨'
+        : 'Passionate reader of literary fiction and fantasy. Coffee enthusiast.',
+    location: username === currentUser.username ? (currentUser as any).location || '' : 'Unknown',
+    isVerified: username === currentUser.username ? currentUser.isVerified || false : true,
+    interests: username === currentUser.username ? currentUser.interests || [] : [],
+    createdAt:
+      username === currentUser.username
+        ? currentUser.createdAt || new Date().toISOString()
+        : '2022-08-12',
+    stats: {
+      booksRead: username === currentUser.username ? currentUser.stats?.booksRead || 0 : 0,
+      reviews: username === currentUser.username ? currentUser.stats?.reviews || 0 : 0,
+      followers: username === currentUser.username ? currentUser.stats?.followers || 0 : 0,
+      following: username === currentUser.username ? currentUser.stats?.following || 0 : 0,
+      averageRating:
+        username === currentUser.username ? currentUser.stats?.averageRating || 0 : 0,
+    },
+  })
+
+  const isOwnProfile = username === currentUser.username
   const [isFollowing, setIsFollowing] = useState(false)
+
+  // --- New: Edit Profile modal state & form values ---
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [formUsername, setFormUsername] = useState(profileUser.username)
+  const [formFullName, setFormFullName] = useState(profileUser.fullName)
+  const [formBio, setFormBio] = useState(profileUser.bio)
+  const [formLocation, setFormLocation] = useState(profileUser.location || '')
+  const [formImagePreview, setFormImagePreview] = useState<string | undefined>(profileUser.profileImageUrl)
+  const [formImageFile, setFormImageFile] = useState<File | null>(null)
+
+  // Keep form values in sync when profileUser changes (for example initial load)
+  const openEditModal = () => {
+    setFormUsername(profileUser.username)
+    setFormFullName(profileUser.fullName)
+    setFormBio(profileUser.bio)
+    setFormLocation(profileUser.location || '')
+    setFormImagePreview(profileUser.profileImageUrl)
+    setFormImageFile(null)
+    setShowEditModal(true)
+  }
+
+  const handleImageChange = (file?: File) => {
+    if (!file) return setFormImagePreview(undefined)
+    setFormImageFile(file)
+    const reader = new FileReader()
+    reader.onload = (e) => setFormImagePreview(e.target?.result as string)
+    reader.readAsDataURL(file)
+  }
+
+  const onImageInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) handleImageChange(file)
+  }
+
+  const handleSaveProfile = (e: FormEvent) => {
+    e.preventDefault()
+    // Basic validation
+    if (!formUsername.trim()) return alert('Username cannot be empty')
+
+    // Update profile locally. In a real app you'd call an API and update global store.
+    setProfileUser((prev) => ({
+      ...prev,
+      username: formUsername.trim(),
+      fullName: formFullName.trim(),
+      bio: formBio,
+      location: formLocation.trim(),
+      profileImageUrl: formImagePreview,
+    }))
+
+    setShowEditModal(false)
+  }
 
   const handleFollowClick = () => {
     setIsFollowing(!isFollowing)
+    setProfileUser((prev) => ({
+      ...prev,
+      stats: {
+        ...prev.stats,
+        followers: isFollowing ? prev.stats.followers - 1 : prev.stats.followers + 1,
+      },
+    }))
   }
 
-  const recentActivity = [
-    {
-      id: 1,
-      type: 'review',
-      book: {
-        title: 'The Seven Husbands of Evelyn Hugo',
-        author: 'Taylor Jenkins Reid',
-        cover: 'https://images-na.ssl-images-amazon.com/images/I/71FTb9X6wsL.jpg'
-      },
-      rating: 5,
-      content: 'Absolutely captivating! This book had me hooked from the first page.',
-      timestamp: '2 days ago',
-      likes: 12,
-      comments: 3
-    },
-    {
-      id: 2,
-      type: 'reading',
-      book: {
-        title: 'Klara and the Sun',
-        author: 'Kazuo Ishiguro',
-        cover: 'https://images-na.ssl-images-amazon.com/images/I/71cN0qJMbXL.jpg'
-      },
-      content: 'Just started this Nobel Prize winner\'s latest work.',
-      timestamp: '5 days ago',
-      likes: 8,
-      comments: 2
-    },
-    {
-      id: 3,
-      type: 'finished',
-      book: {
-        title: 'Project Hail Mary',
-        author: 'Andy Weir',
-        cover: 'https://images-na.ssl-images-amazon.com/images/I/91vS0F7DXFL.jpg'
-      },
-      rating: 4,
-      content: 'What a wild ride! Andy Weir delivers another science-heavy thriller.',
-      timestamp: '1 week ago',
-      likes: 15,
-      comments: 7
+  // ✅ Post Review + Update Stats
+  const handlePostReview = () => {
+    if (reviewText.trim()) {
+      const newReview = { text: reviewText, date: new Date().toLocaleString() }
+      setReviews([newReview, ...reviews])
+      setReviewText('')
+      setProfileUser((prev) => ({
+        ...prev,
+        stats: { ...prev.stats, reviews: prev.stats.reviews + 1 },
+      }))
     }
-  ]
+  }
 
-  const readingLists = [
-    {
-      id: 1,
-      name: 'Must Read Fiction 2024',
-      bookCount: 12,
-      isPublic: true,
-      coverBooks: [
-        'https://images-na.ssl-images-amazon.com/images/I/71FTb9X6wsL.jpg',
-        'https://images-na.ssl-images-amazon.com/images/I/71cN0qJMbXL.jpg',
-        'https://images-na.ssl-images-amazon.com/images/I/91vS0F7DXFL.jpg'
-      ]
-    },
-    {
-      id: 2,
-      name: 'Fantasy Favorites',
-      bookCount: 8,
-      isPublic: true,
-      coverBooks: [
-        'https://images-na.ssl-images-amazon.com/images/I/81NJbF4Tm9L.jpg',
-        'https://images-na.ssl-images-amazon.com/images/I/91K0cXJg-tL.jpg',
-        'https://images-na.ssl-images-amazon.com/images/I/71BYWWjVFmL.jpg'
-      ]
+  // ✅ Edit Review
+  const handleEditReview = (index: number) => {
+    setEditingIndex(index)
+    setEditText(reviews[index].text)
+    setShowOptions(null)
+  }
+
+  const saveEditedReview = () => {
+    if (editingIndex !== null) {
+      const updated = [...reviews]
+      updated[editingIndex].text = editText
+      setReviews(updated)
+      setEditingIndex(null)
     }
-  ]
+  }
+
+  // ✅ Delete Review
+  const confirmDeleteReview = () => {
+    if (deleteIndex !== null) {
+      const updated = reviews.filter((_, i) => i !== deleteIndex)
+      setReviews(updated)
+      setDeleteIndex(null)
+      setProfileUser((prev) => ({
+        ...prev,
+        stats: { ...prev.stats, reviews: prev.stats.reviews - 1 },
+      }))
+    }
+  }
 
   const tabs = [
-    { id: 'activity', label: 'Activity', count: recentActivity.length },
-    { id: 'reviews', label: 'Reviews', count: profileUser.stats.reviews },
-    { id: 'lists', label: 'Reading Lists', count: readingLists.length },
-    { id: 'stats', label: 'Reading Stats' }
+    { id: 'activity', label: 'Activity', count: 0 },
+    { id: 'reviews', label: 'Reviews', count: reviews.length },
+    { id: 'lists', label: 'Reading Lists', count: 0 },
+    { id: 'stats', label: 'Reading Stats' },
   ]
 
   const getTabContent = () => {
     switch (activeTab) {
-      case 'activity':
+      case 'reviews':
         return (
           <div className="space-y-6">
-            {recentActivity.map((activity) => (
-              <div key={activity.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <div className="flex space-x-4">
-                  <div className="flex-shrink-0">
-                    <img
-                      src={activity.book.cover}
-                      alt={activity.book.title}
-                      className="w-16 h-24 object-cover rounded-lg shadow-sm"
-                    />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="mb-2">
-                      <h3 className="font-medium text-gray-900">{activity.book.title}</h3>
-                      <p className="text-sm text-gray-600">by {activity.book.author}</p>
-                    </div>
-
-                    {activity.rating && (
-                      <div className="flex items-center space-x-1 mb-3">
-                        {[...Array(5)].map((_, i) => (
-                          <Star
-                            key={i}
-                            className={`h-4 w-4 ${
-                              i < activity.rating! ? 'text-yellow-400 fill-current' : 'text-gray-300'
-                            }`}
-                          />
-                        ))}
-                        <span className="text-sm text-gray-600 ml-2">{activity.rating}/5</span>
-                      </div>
-                    )}
-
-                    <div className="mb-3">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        activity.type === 'review' 
-                          ? 'bg-blue-100 text-blue-800' 
-                          : activity.type === 'reading'
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-purple-100 text-purple-800'
-                      }`}>
-                        {activity.type === 'review' 
-                          ? '📝 Reviewed' 
-                          : activity.type === 'reading'
-                          ? '📖 Currently Reading'
-                          : '✅ Finished Reading'
-                        }
-                      </span>
-                    </div>
-
-                    <p className="text-gray-700 mb-4 leading-relaxed">{activity.content}</p>
-
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-6">
-                        <button className="flex items-center space-x-2 text-sm text-gray-500 hover:text-red-600">
-                          <Heart className="h-4 w-4" />
-                          <span>{activity.likes}</span>
-                        </button>
-                        
-                        <button className="flex items-center space-x-2 text-sm text-gray-500 hover:text-blue-600">
-                          <MessageCircle className="h-4 w-4" />
-                          <span>{activity.comments}</span>
-                        </button>
-                        
-                        <button className="flex items-center space-x-2 text-sm text-gray-500 hover:text-green-600">
-                          <Share className="h-4 w-4" />
-                          <span>Share</span>
-                        </button>
-                      </div>
-                      <span className="text-sm text-gray-500">{activity.timestamp}</span>
-                    </div>
-                  </div>
-                </div>
+            {/* Write Review */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+              <h3 className="text-lg font-semibold mb-3 text-gray-900">Write a Review</h3>
+              <textarea
+                value={reviewText}
+                onChange={(e) => setReviewText(e.target.value)}
+                placeholder="Share your thoughts about a book..."
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 resize-none"
+                rows={4}
+              />
+              <div className="mt-3 flex justify-end">
+                <button
+                  onClick={handlePostReview}
+                  className="bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700 transition"
+                >
+                  Post Review
+                </button>
               </div>
-            ))}
-          </div>
-        )
-      case 'lists':
-        return (
-          <div className="grid md:grid-cols-2 gap-6">
-            {readingLists.map((list) => (
-              <div key={list.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow cursor-pointer">
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <h3 className="font-medium text-gray-900 mb-1">{list.name}</h3>
-                    <p className="text-sm text-gray-600">{list.bookCount} books</p>
-                  </div>
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                    list.isPublic ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                  }`}>
-                    {list.isPublic ? 'Public' : 'Private'}
-                  </span>
-                </div>
-                
-                <div className="flex space-x-2">
-                  {list.coverBooks.slice(0, 3).map((cover, i) => (
-                    <img
-                      key={i}
-                      src={cover}
-                      alt=""
-                      className="w-12 h-16 object-cover rounded shadow-sm"
-                    />
-                  ))}
-                  {list.bookCount > 3 && (
-                    <div className="w-12 h-16 bg-gray-100 rounded flex items-center justify-center">
-                      <span className="text-xs text-gray-500">+{list.bookCount - 3}</span>
+            </div>
+
+            {/* Posted Reviews */}
+            {reviews.length === 0 ? (
+              <p className="text-gray-600">No reviews yet. Be the first to share!</p>
+            ) : (
+              reviews.map((r, index) => (
+                <div
+                  key={index}
+                  className="relative bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm"
+                >
+                  <p className="text-gray-800 whitespace-pre-line mb-2">{r.text}</p>
+                  <span className="text-xs text-gray-500">{r.date}</span>
+
+                  <button
+                    onClick={() => setShowOptions(showOptions === index ? null : index)}
+                    className="absolute top-2 right-2 p-2 hover:bg-gray-200 rounded-full"
+                  >
+                    <MoreHorizontal className="w-5 h-5 text-gray-600" />
+                  </button>
+
+                  {showOptions === index && (
+                    <div className="absolute top-8 right-2 bg-white border rounded-md shadow-md z-10">
+                      <button
+                        onClick={() => handleEditReview(index)}
+                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => setDeleteIndex(index)}
+                        className="block px-4 py-2 text-sm text-red-600 hover:bg-gray-100 w-full text-left"
+                      >
+                        Delete
+                      </button>
                     </div>
                   )}
                 </div>
-              </div>
-            ))}
+              ))
+            )}
+
+            {/* ✅ Edit Modal */}
+            <AnimatePresence>
+              {editingIndex !== null && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50"
+                >
+                  <motion.div
+                    initial={{ scale: 0.8 }}
+                    animate={{ scale: 1 }}
+                    exit={{ scale: 0.8 }}
+                    className="bg-white rounded-xl p-6 w-11/12 md:w-1/2"
+                  >
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-lg font-semibold text-gray-900">Edit Review</h3>
+                      <button onClick={() => setEditingIndex(null)}>
+                        <X className="h-5 w-5 text-gray-500" />
+                      </button>
+                    </div>
+                    <textarea
+                      value={editText}
+                      onChange={(e) => setEditText(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-primary-500 resize-none"
+                      rows={4}
+                    />
+                    <div className="flex justify-end space-x-3 mt-4">
+                      <button
+                        onClick={() => setEditingIndex(null)}
+                        className="px-4 py-2 border rounded-lg text-gray-600 hover:bg-gray-100"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={saveEditedReview}
+                        className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* ✅ Delete Bottom Sheet */}
+            <AnimatePresence>
+              {deleteIndex !== null && (
+                <motion.div
+                  initial={{ y: '100%' }}
+                  animate={{ y: 0 }}
+                  exit={{ y: '100%' }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+                  className="fixed inset-0 bg-black bg-opacity-40 flex items-end justify-center z-50"
+                >
+                  <motion.div className="bg-white rounded-t-2xl p-6 w-full md:w-1/2 text-center">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                      Delete Review?
+                    </h3>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Are you sure you want to delete this review? This action cannot be undone.
+                    </p>
+                    <div className="flex justify-center space-x-4">
+                      <button
+                        onClick={() => setDeleteIndex(null)}
+                        className="px-4 py-2 border rounded-lg text-gray-600 hover:bg-gray-100"
+                      >
+                        No
+                      </button>
+                      <button
+                        onClick={confirmDeleteReview}
+                        className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                      >
+                        Yes, Delete
+                      </button>
+                    </div>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         )
+
       case 'stats':
         return (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 text-center">
-              <BookOpen className="h-8 w-8 text-primary-600 mx-auto mb-3" />
-              <div className="text-2xl font-bold text-gray-900">{profileUser.stats.booksRead}</div>
-              <div className="text-sm text-gray-600">Books Read</div>
+            <div className="bg-white p-6 rounded-lg shadow text-center">
+              <BookOpen className="h-8 w-8 mx-auto text-primary-600 mb-2" />
+              <p className="text-2xl font-bold">{profileUser.stats.booksRead}</p>
+              <p className="text-gray-500 text-sm">Books Read</p>
             </div>
-            
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 text-center">
-              <Star className="h-8 w-8 text-yellow-500 mx-auto mb-3" />
-              <div className="text-2xl font-bold text-gray-900">{profileUser.stats.averageRating}</div>
-              <div className="text-sm text-gray-600">Average Rating</div>
+            <div className="bg-white p-6 rounded-lg shadow text-center">
+              <Star className="h-8 w-8 mx-auto text-yellow-500 mb-2" />
+              <p className="text-2xl font-bold">{profileUser.stats.averageRating}</p>
+              <p className="text-gray-500 text-sm">Average Rating</p>
             </div>
-            
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 text-center">
-              <MessageCircle className="h-8 w-8 text-blue-500 mx-auto mb-3" />
-              <div className="text-2xl font-bold text-gray-900">{profileUser.stats.reviews}</div>
-              <div className="text-sm text-gray-600">Reviews Written</div>
-            </div>
-
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 text-center">
-              <Users className="h-8 w-8 text-green-500 mx-auto mb-3" />
-              <div className="text-2xl font-bold text-gray-900">{profileUser.stats.followers}</div>
-              <div className="text-sm text-gray-600">Followers</div>
-            </div>
-            
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 text-center">
-              <Users className="h-8 w-8 text-purple-500 mx-auto mb-3" />
-              <div className="text-2xl font-bold text-gray-900">{profileUser.stats.following}</div>
-              <div className="text-sm text-gray-600">Following</div>
-            </div>
-            
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 text-center">
-              <Calendar className="h-8 w-8 text-indigo-500 mx-auto mb-3" />
-              <div className="text-2xl font-bold text-gray-900">
-                {new Date(profileUser.createdAt).getFullYear()}
-              </div>
-              <div className="text-sm text-gray-600">Member Since</div>
+            <div className="bg-white p-6 rounded-lg shadow text-center">
+              <MessageCircle className="h-8 w-8 mx-auto text-blue-500 mb-2" />
+              <p className="text-2xl font-bold">{reviews.length}</p>
+              <p className="text-gray-500 text-sm">Reviews Written</p>
             </div>
           </div>
         )
+
       default:
-        return <div>Reviews content coming soon...</div>
+        return <p>No recent activity yet.</p>
     }
   }
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
-      {/* Profile Header */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-8 mb-8 transition-colors duration-200">
+      {/* Header */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 mb-8">
         <div className="flex flex-col lg:flex-row lg:items-start lg:space-x-8">
-          {/* Avatar and Basic Info */}
+          {/* Avatar + Info */}
           <div className="flex-shrink-0 text-center lg:text-left mb-6 lg:mb-0">
-            {profileUser.profileImageUrl ? (
-              <img 
-                src={profileUser.profileImageUrl} 
-                alt={profileUser.username}
-                className="h-32 w-32 rounded-full object-cover mx-auto lg:mx-0 mb-4"
-              />
-            ) : (
-              <div className="h-32 w-32 bg-gradient-to-r from-primary-400 to-secondary-400 rounded-full flex items-center justify-center mx-auto lg:mx-0 mb-4">
+            <div className="h-32 w-32 bg-gradient-to-r from-primary-400 to-secondary-400 rounded-full flex items-center justify-center mx-auto lg:mx-0 mb-4 overflow-hidden">
+              {profileUser.profileImageUrl ? (
+                <img src={profileUser.profileImageUrl} alt="avatar" className="h-full w-full object-cover" />
+              ) : (
                 <span className="text-white font-bold text-4xl">
                   {profileUser.fullName?.charAt(0) || profileUser.username?.charAt(0)?.toUpperCase()}
                 </span>
-              </div>
-            )}
-            
-            <div className="mb-4">
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 flex items-center justify-center lg:justify-start">
-                {profileUser.fullName || profileUser.username}
-                {profileUser.isVerified && (
-                  <span className="ml-2 text-blue-500">✓</span>
-                )}
-              </h1>
-              <p className="text-gray-600 dark:text-gray-400">@{profileUser.username}</p>
+              )}
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex space-x-3 justify-center lg:justify-start">
+            <h1 className="text-2xl font-bold text-gray-900">
+              {profileUser.fullName || profileUser.username}
+            </h1>
+            <p className="text-gray-600">@{profileUser.username}</p>
+            {profileUser.location && <p className="text-sm text-gray-500">{profileUser.location}</p>}
+
+            {/* Buttons */}
+            <div className="flex space-x-3 justify-center lg:justify-start mt-4">
               {isOwnProfile ? (
-                <button className="btn-secondary flex items-center space-x-2">
-                  <Settings className="h-4 w-4" />
-                  <span>Edit Profile</span>
-                </button>
+                <>
+                  <button onClick={openEditModal} className="btn-secondary flex items-center space-x-2">
+                    <Settings className="h-4 w-4" />
+                    <span>Edit Profile</span>
+                  </button>
+                </>
               ) : (
                 <>
-                  <button 
+                  <button
                     onClick={handleFollowClick}
-                    className={`btn-primary flex items-center space-x-2 ${
-                      isFollowing ? 'bg-gray-600 hover:bg-gray-700' : ''
-                    }`}
+                    className={`btn-primary flex items-center space-x-2 ${isFollowing ? 'bg-gray-600 hover:bg-gray-700' : ''}`}
                   >
                     <UserPlus className="h-4 w-4" />
                     <span>{isFollowing ? 'Following' : 'Follow'}</span>
@@ -331,119 +420,159 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Profile Details */}
+          {/* Bio + Stats */}
           <div className="flex-1">
-            {profileUser.bio && (
-              <p className="text-gray-700 mb-6 leading-relaxed">
-                {profileUser.bio}
-              </p>
-            )}
+            <p className="text-gray-700 mb-6 leading-relaxed">{profileUser.bio}</p>
 
-            {/* Stats */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-              <div className="text-center lg:text-left">
-                <div className="text-xl font-bold text-gray-900">{profileUser.stats.booksRead}</div>
-                <div className="text-sm text-gray-600">Books Read</div>
-              </div>
-              <div className="text-center lg:text-left">
-                <div className="text-xl font-bold text-gray-900">{profileUser.stats.reviews}</div>
-                <div className="text-sm text-gray-600">Reviews</div>
-              </div>
-              <div className="text-center lg:text-left">
-                <div className="text-xl font-bold text-gray-900">{profileUser.stats.followers}</div>
-                <div className="text-sm text-gray-600">Followers</div>
-              </div>
-              <div className="text-center lg:text-left">
-                <div className="text-xl font-bold text-gray-900">{profileUser.stats.following}</div>
-                <div className="text-sm text-gray-600">Following</div>
-              </div>
-            </div>
-
-            {/* Interests */}
-            <div className="mb-6">
-              <h3 className="text-sm font-medium text-gray-900 mb-2">Interests</h3>
-              <div className="flex flex-wrap gap-2">
-                {profileUser.interests.map((interest, i) => (
-                  <span key={i} className="px-3 py-1 bg-primary-100 text-primary-800 text-sm rounded-full">
-                    {interest}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            {/* Social Links */}
-            {(profileUser.websiteUrl || profileUser.twitterHandle || profileUser.instagramHandle) && (
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-4 text-center">
               <div>
-                <h3 className="text-sm font-medium text-gray-900 mb-2">Links</h3>
-                <div className="flex flex-wrap gap-4">
-                  {profileUser.websiteUrl && (
-                    <a 
-                      href={profileUser.websiteUrl} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="flex items-center space-x-1 text-sm text-primary-600 hover:text-primary-700"
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                      <span>Website</span>
-                    </a>
-                  )}
-                  {profileUser.twitterHandle && (
-                    <a 
-                      href={`https://twitter.com/${profileUser.twitterHandle}`} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="flex items-center space-x-1 text-sm text-primary-600 hover:text-primary-700"
-                    >
-                      <span>🐦</span>
-                      <span>@{profileUser.twitterHandle}</span>
-                    </a>
-                  )}
-                  {profileUser.instagramHandle && (
-                    <a 
-                      href={`https://instagram.com/${profileUser.instagramHandle}`} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="flex items-center space-x-1 text-sm text-primary-600 hover:text-primary-700"
-                    >
-                      <span>📷</span>
-                      <span>@{profileUser.instagramHandle}</span>
-                    </a>
-                  )}
-                </div>
+                <p className="text-lg font-semibold text-gray-900">{profileUser.stats.booksRead}</p>
+                <p className="text-sm text-gray-500">Books Read</p>
               </div>
-            )}
+              <div>
+                <p className="text-lg font-semibold text-gray-900">{profileUser.stats.reviews}</p>
+                <p className="text-sm text-gray-500">Reviews</p>
+              </div>
+              <div>
+                <p className="text-lg font-semibold text-gray-900">{profileUser.stats.followers}</p>
+                <p className="text-sm text-gray-500">Followers</p>
+              </div>
+              <div>
+                <p className="text-lg font-semibold text-gray-900">{profileUser.stats.following}</p>
+                <p className="text-sm text-gray-500">Following</p>
+              </div>
+              <div>
+                <p className="text-lg font-semibold text-gray-900">{profileUser.stats.averageRating}</p>
+                <p className="text-sm text-gray-500">Avg. Rating</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Tab Navigation */}
+      {/* Tabs */}
       <div className="mb-8">
         <nav className="flex space-x-8 border-b border-gray-200">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
-                activeTab === tab.id
-                  ? 'border-primary-600 text-primary-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
+              className={`py-2 px-3 -mb-px border-b-2 font-medium text-sm ${activeTab === tab.id
+                ? 'border-primary-600 text-primary-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
             >
               {tab.label}
-              {tab.count !== undefined && (
-                <span className="ml-2 bg-gray-100 text-gray-900 py-0.5 px-2 rounded-full text-xs">
-                  {tab.count}
-                </span>
-              )}
+              {tab.count !== undefined && ` (${tab.count})`}
             </button>
           ))}
         </nav>
       </div>
 
       {/* Tab Content */}
-      <div>
-        {getTabContent()}
-      </div>
+      {getTabContent()}
+
+      {/* ----------------- Edit Profile Modal ----------------- */}
+      <AnimatePresence>
+        {showEditModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50"
+          >
+            <motion.form
+              onSubmit={handleSaveProfile}
+              initial={{ scale: 0.9 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.9 }}
+              className="bg-white rounded-xl p-6 w-11/12 md:w-1/2 max-h-[90vh] overflow-auto"
+            >
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Edit Profile</h3>
+                <button type="button" onClick={() => setShowEditModal(false)}>
+                  <X className="h-5 w-5 text-gray-500" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4">
+                {/* Profile image preview + upload */}
+                <div className="flex items-center space-x-4">
+                  <div className="h-20 w-20 rounded-full bg-gray-100 overflow-hidden flex items-center justify-center">
+                    {formImagePreview ? (
+                      // preview
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={formImagePreview} alt="preview" className="h-full w-full object-cover" />
+                    ) : (
+                      <span className="text-gray-600 font-bold text-2xl">{formFullName?.charAt(0) || formUsername?.charAt(0)?.toUpperCase()}</span>
+                    )}
+                  </div>
+
+                  <div className="flex-1">
+                    <label className="block text-sm font-medium text-gray-700">Profile Picture</label>
+                    <input type="file" accept="image/*" onChange={onImageInputChange} className="mt-2" />
+                    <div className="mt-2 text-xs text-gray-500">PNG, JPG or GIF — max 5MB</div>
+                    {formImagePreview && (
+                      <button type="button" onClick={() => { setFormImagePreview(undefined); setFormImageFile(null) }} className="mt-2 text-sm text-red-600 hover:underline">Remove</button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Username */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Username</label>
+                  <input
+                    value={formUsername}
+                    onChange={(e) => setFormUsername(e.target.value)}
+                    className="mt-1 block w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-primary-500"
+                    placeholder="your-username"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Usernames cannot contain spaces.</p>
+                </div>
+
+                {/* Full name */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Full name</label>
+                  <input
+                    value={formFullName}
+                    onChange={(e) => setFormFullName(e.target.value)}
+                    className="mt-1 block w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-primary-500"
+                    placeholder="Your full name"
+                  />
+                </div>
+
+                {/* Bio */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Bio</label>
+                  <textarea
+                    value={formBio}
+                    onChange={(e) => setFormBio(e.target.value)}
+                    rows={4}
+                    className="mt-1 block w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-primary-500 resize-none"
+                    placeholder="A little bit about you..."
+                  />
+                </div>
+
+                {/* Location */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Location</label>
+                  <input
+                    value={formLocation}
+                    onChange={(e) => setFormLocation(e.target.value)}
+                    className="mt-1 block w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-primary-500"
+                    placeholder="City, Country (optional)"
+                  />
+                </div>
+
+                <div className="flex justify-end space-x-3 mt-2">
+                  <button type="button" onClick={() => setShowEditModal(false)} className="px-4 py-2 border rounded-lg text-gray-600 hover:bg-gray-100">Cancel</button>
+                  <button type="submit" className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700">Save</button>
+                </div>
+              </div>
+            </motion.form>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

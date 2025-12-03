@@ -1,29 +1,38 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
-import { useEffect } from 'react'
-import { useAuthStore } from './store/authStore'
-import { useThemeStore } from './store/themeStore'
-import Layout from './components/Layout'
-import HomePage from './pages/HomePage'
-import LoginPage from './pages/LoginPage'
-import RegisterPage from './pages/RegisterPage'
-import ProfilePage from './pages/ProfilePage'
-import BookPage from './pages/BookPage'
-import ReviewPage from './pages/ReviewPage'
-import FeedPage from './pages/FeedPage'
+// App.tsx
+import { Routes, Route, Navigate } from "react-router-dom"
+import { useEffect } from "react"
+import { useAuthStore } from "./store/authStore"
+import { useThemeStore } from "./store/themeStore"
+
+import Layout from "./components/Layout"
+import HomePage from "./pages/HomePage"
+import LoginPage from "./pages/LoginPage"
+import RegisterPage from "./pages/RegisterPage"
+import ProfilePage from "./pages/ProfilePage"
+import BookPage from "./pages/BookPage"
+import ReviewPage from "./pages/ReviewPage"
+import FeedPage from "./pages/FeedPage"
+import LandingPage from "./pages/LandingPage"
 
 function App() {
   const { isAuthenticated, user, hydrated, setHydrated } = useAuthStore()
   const { setHydrated: setThemeHydrated } = useThemeStore()
-  
+
   useEffect(() => {
-    console.log('🌊 App mounted, hydrating auth state...')
+    console.log("🌊 App mounted, hydrating auth state...")
     setHydrated()
     setThemeHydrated()
   }, [setHydrated, setThemeHydrated])
-  
-  console.log('🔄 App render - isAuthenticated:', isAuthenticated, 'user:', user?.username, 'hydrated:', hydrated)
-  
-  // Don't render routes until we've hydrated the auth state
+
+  console.log(
+    "🔄 App render - isAuthenticated:",
+    isAuthenticated,
+    "user:",
+    user?.username,
+    "hydrated:",
+    hydrated
+  )
+
   if (!hydrated) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -37,21 +46,44 @@ function App() {
 
   return (
     <Routes>
-      {/* Public routes */}
-      <Route path="/login" element={!isAuthenticated ? <LoginPage /> : <Navigate to="/feed" />} />
-      <Route path="/register" element={!isAuthenticated ? <RegisterPage /> : <Navigate to="/feed" />} />
-      
-      {/* Protected routes */}
-      <Route path="/" element={<Layout />}>
-        <Route index element={isAuthenticated ? <Navigate to="/feed" /> : <HomePage />} />
-        <Route path="/feed" element={isAuthenticated ? <FeedPage /> : <Navigate to="/" />} />
-        <Route path="/profile/:username" element={<ProfilePage />} />
-        <Route path="/books/:id" element={<BookPage />} />
-        <Route path="/reviews/:id" element={<ReviewPage />} />
-        
-        {/* Catch all */}
-        <Route path="*" element={<Navigate to={isAuthenticated ? "/feed" : "/"} />} />
+      {/* PUBLIC ROUTES */}
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/home" element={<HomePage />} />
+
+      {/* Login & Register SHOULD ALWAYS be accessible */}
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
+
+      {/* PROTECTED ROUTES (wrapped in Layout) */}
+      <Route element={<Layout />}>
+        <Route
+          path="/feed"
+          element={isAuthenticated ? <FeedPage /> : <Navigate to="/login" />}
+        />
+
+        <Route
+          path="/profile/:username"
+          element={isAuthenticated ? <ProfilePage /> : <Navigate to="/login" />}
+        />
+
+        <Route
+          path="/books/:id"
+          element={isAuthenticated ? <BookPage /> : <Navigate to="/login" />}
+        />
+
+        <Route
+          path="/reviews/:id"
+          element={isAuthenticated ? <ReviewPage /> : <Navigate to="/login" />}
+        />
       </Route>
+
+      {/* CATCH ALL ROUTE */}
+      <Route
+        path="*"
+        element={
+          isAuthenticated ? <Navigate to="/feed" /> : <Navigate to="/home" />
+        }
+      />
     </Routes>
   )
 }
